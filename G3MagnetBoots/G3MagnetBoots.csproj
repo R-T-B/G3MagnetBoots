@@ -47,7 +47,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="G3MagnetBoots.cs" />
-    <Compile Include="G3MagnetBootsHarmonyLoader.cs" />
+    <Compile Include="G3MagnetBootsSettings.cs" />
+    <Compile Include="HarmonyLoader.cs" />
     <Compile Include="HullTargeting.cs" />
     <Compile Include="KerbalEVAAccess.cs" />
     <Compile Include="Logger.cs" />

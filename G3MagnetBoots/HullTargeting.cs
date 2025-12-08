@@ -84,9 +84,8 @@ namespace G3MagnetBoots
 
             Vector3 hitPoint = hit.point;
 
-            // Ensure positive normal (we dont want the kerbal to flip upside down)
             Vector3 hitNormal = hit.normal;
-            if (Vector3.Dot(hitNormal, up) < 0f) hitNormal = -hitNormal;
+            //if (Vector3.Dot(hitNormal, up) < 0f) hitNormal = -hitNormal;
             hitNormal.Normalize();
 
             // Spherecast might hit on its side, not necessarily the point right below the feet, so check actual distance

@@ -62,6 +62,34 @@ namespace G3MagnetBoots
         internal static readonly AccessTools.FieldRef<KerbalEVA, List<Collider>> _currentLadderTriggers =
             AccessTools.FieldRefAccess<KerbalEVA, List<Collider>>("currentLadderTriggers");
 
+        //protected ModuleEvaChute evaChute;
+        internal static readonly AccessTools.FieldRef<KerbalEVA, ModuleEvaChute> _evaChute =
+            AccessTools.FieldRefAccess<KerbalEVA, ModuleEvaChute>("evaChute");
+
+        ///wasVisorEnabledBeforeWelding
+        internal static readonly AccessTools.FieldRef<KerbalEVA, bool> _wasVisorEnabledBeforeWelding =
+            AccessTools.FieldRefAccess<KerbalEVA, bool>("wasVisorEnabledBeforeWelding");
+
+        //private VisorStates visorState;
+        internal static readonly AccessTools.FieldRef<KerbalEVA, KerbalEVA.VisorStates> _visorState =
+            AccessTools.FieldRefAccess<KerbalEVA, KerbalEVA.VisorStates>("visorState");
+
+        //HasWeldLineOfSight()
+        internal static bool HasWeldLineOfSight(KerbalEVA eva)
+        {
+            var method = AccessTools.Method(typeof(KerbalEVA), "HasWeldLineOfSight", Type.EmptyTypes);
+            var func = AccessTools.MethodDelegate<Func<KerbalEVA, bool>>(method);
+            return func(eva);
+        }
+
+        //SurfaceContact()
+        internal static bool SurfaceContact(KerbalEVA eva)
+        {
+            var method = AccessTools.Method(typeof(KerbalEVA), "SurfaceContact", Type.EmptyTypes);
+            var func = AccessTools.MethodDelegate<Func<KerbalEVA, bool>>(method);
+            return func(eva);
+        }
+
         internal static ref float CurrentSpd(KerbalEVA eva) => ref _currentSpd(eva);
         internal static ref float LastTgtSpeed(KerbalEVA eva) => ref _lastTgtSpeed(eva);
         internal static ref float TgtSpeed(KerbalEVA eva) => ref _tgtSpeed(eva);
@@ -77,5 +105,8 @@ namespace G3MagnetBoots
         internal static ref Vector3 PackLinear(KerbalEVA eva) => ref _packLinear(eva);
         internal static ref Vector3 PackTgtRPos(KerbalEVA eva) => ref _packTgtRPos(eva);
         internal static ref float FuelFlowRate(KerbalEVA eva) => ref _fuelFlowRate(eva);
+        internal static ref bool WasVisorEnabledBeforeWelding(KerbalEVA eva) => ref _wasVisorEnabledBeforeWelding(eva);
+        internal static ref KerbalEVA.VisorStates VisorState(KerbalEVA eva) => ref _visorState(eva);
+        internal static ref ModuleEvaChute EvaChute(KerbalEVA eva) => ref _evaChute(eva);
     }
 }
