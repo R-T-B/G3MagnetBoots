@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/G3MagnetBoots/.github/copilot-instructions.md
+/G3MagnetBoots/OLD
+/G3MagnetBoots/ModuleKSP2StyleMagBoots.cs
