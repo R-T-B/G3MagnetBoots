@@ -13,7 +13,7 @@ namespace G3MagnetBoots
             try
             {
                 Harmony h2 = new("EVAMagBoots");
-                h2.PatchAll();
+                h2.PatchAll(typeof(HarmonyLoader).Assembly);
                 AccessTools.Method(typeof(KerbalEVA), "SetupFSM");
             }
             catch (Exception ex)
@@ -34,5 +34,4 @@ namespace G3MagnetBoots
             module?.HookIntoEva(__instance);
         }
     }
-
 }

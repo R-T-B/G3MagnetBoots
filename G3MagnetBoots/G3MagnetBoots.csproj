@@ -46,6 +46,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="EVACameraPatch.cs" />
     <Compile Include="G3MagnetBoots.cs" />
     <Compile Include="G3MagnetBootsSettings.cs" />
     <Compile Include="HarmonyLoader.cs" />
@@ -64,7 +65,6 @@
     <Folder Include="GameData\G3MagnetBoots\Debug\" />
     <Folder Include="GameData\G3MagnetBoots\PluginData\" />
     <Folder Include="GameData\G3MagnetBoots\Plugins\" />
-    <Folder Include="OLD\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

@@ -12,16 +12,8 @@ using UnityEngine.UI;
 using static G3MagnetBoots.HullTargeting;
 using static KerbalEVA;
 
-// Up next:  
-// 
-
 /*  To fix:
  *  More closely align feet to colliders upon attachment (spherecast can result in walking on the gap between the radius of the hit and the sphere final origin)
- *  Allow RCS Thrusting on a vessel when applicable, just ensure only vertical thrust is allowed (multiply linear rcs by vector up).
- *  Multiple kerbals loading seem to interfere, only one is allowed to attach at a time, others cant.
- *  Reverse-engineer the stock Rigidbody Anchoring logic used to stabalize kerbals on eva when packed, timewarping, or idling without movement input.
- *  Note: Not sure if this still occurs...  Possible issue with multiple kerbals with magnet boots on the same vessel interfering with each other, phantom forces acting on the main vessel. Sometimes results in kerbals being flung off into space but ive yet to catch it occur to an active vessel kerbal.
- *  Kinda fixed: Heading is bound to camera up, making it hard to walk on non-aligned surfaces
  *  Hook into stock EVA Ground science state changes (to allow playing golf on a ship and possibly collecting samples of a ship)
  *  Kerbals surface - aligned forward direction(the way they face) doesn't turn alongside the plane they are attached to, resulting in clear misaligned facing direction when the vessel beneath rotates.
  */
@@ -32,7 +24,6 @@ using static KerbalEVA;
  *  Consider adding a "let go" input and screen message like when on a ladder which either does the same as jumping off, or another useful behavior. Stock implementation is intrusive so find a different way to communicate this.
  *  Consider adding sound effects for magnet engage/disengage, walking on hull, jumping off hull.
  *  Consider adding an LED indicator on the Kerbal suit boot model to show magnet status and provide slight illumination.3
- *  Support asteroid surfaces.
  */
 
 
@@ -589,10 +580,6 @@ namespace G3MagnetBoots
                 return;
             }
 
-
-            // m
-
-
             _hullTarget = target;
         }
 
@@ -603,23 +590,17 @@ namespace G3MagnetBoots
             var rb = Part.rb;
             if (rb == null) return;
 
-            // Choose desired facing: movement when moving, else tgtFwd (mouse-look etc.)
-            Vector3 desired = (tgtRpos != Vector3.zero) ? (tgtRpos - base.transform.position) : tgtFwd;
-
-            // Project both onto surface plane
             Vector3 curFwd = Vector3.ProjectOnPlane(base.transform.forward, fUp);
-            Vector3 desFwd = Vector3.ProjectOnPlane(desired, fUp);
+            Vector3 desFwd = Vector3.ProjectOnPlane(tgtFwd, fUp);
 
             if (curFwd.sqrMagnitude < 1e-6f || desFwd.sqrMagnitude < 1e-6f) return;
 
             curFwd.Normalize();
             desFwd.Normalize();
 
-            // Signed shortest angle around surface up (degrees)
             deltaHdg = Vector3.SignedAngle(curFwd, desFwd, fUp);
             float sign = Mathf.Sign(deltaHdg);
 
-            // Stock-style angularVelocity drive (do NOT convert to radians here)
             if (Mathf.Abs(deltaHdg) < turnRate * 2f)
                 rb.angularVelocity = deltaHdg * 0.5f * fUp;
             else
@@ -629,17 +610,18 @@ namespace G3MagnetBoots
         protected virtual void UpdatePackLinear()
         {
             // Same as stock but blocked if on hull
-            if (Kerbal.JetpackDeployed && !base.vessel.packed && !Kerbal.isRagdoll && !EVAConstructionModeController.MovementRestricted && !_hullTarget.IsValid())
-            {
-                if (!Settings.canJetpackOnHull) return;
-                //if (FSM.CurrentState == st_idle_hull || FSM.CurrentState == st_walk_hull || FSM.CurrentState == st_jump_hull) return;
+            if (!Kerbal.JetpackDeployed) return;
+            if (base.vessel.packed || Kerbal.isRagdoll || EVAConstructionModeController.MovementRestricted) return;
+            if (_hullTarget.IsValid() && !Settings.canJetpackOnHull) return;
 
-                packLinear = packTgtRPos * (Kerbal.thrustPercentage * 0.01f);
-                if (packLinear != Vector3.zero && Kerbal.Fuel > 0.0)
-                {
-                    base.part.AddForce(packLinear * Kerbal.linPower);
-                    fuelFlowRate += packLinear.magnitude * Time.fixedDeltaTime;
-                }
+            // Only allow up/down thrust when on hull
+            Vector3 vertical = Vector3.Project(packTgtRPos, Kerbal.transform.up);
+            packLinear = vertical * (Kerbal.thrustPercentage * 0.01f);
+            //packLinear = packTgtRPos * (Kerbal.thrustPercentage * 0.01f);
+            if (packLinear != Vector3.zero && Kerbal.Fuel > 0.0)
+            {
+                base.part.AddForce(packLinear * Kerbal.linPower);
+                fuelFlowRate += packLinear.magnitude * Time.fixedDeltaTime;
             }
         }
 
@@ -654,7 +636,6 @@ namespace G3MagnetBoots
                 }
             }
         }
-
 
         // Stock-alike custom implementation replacing correctGroundedRotation() which uses the scene-fixed coordinate frame
         private void OrientToSurfaceNormal()
@@ -688,14 +669,29 @@ namespace G3MagnetBoots
 
             if (Kerbal.footPivot == null) return;
 
-            Vector3 targetPos = _hullTarget.hitPoint + (fUp * 0.08f);
+            Vector3 footOrigin = Kerbal.footPivot.position + fUp * 0.10f;
+            float maxRayDistance = GroundSpherecastRadius + 0.20f;
 
-            Vector3 foot = Kerbal.footPivot != null
-                ? Kerbal.footPivot.position
-                : rb.worldCenterOfMass;
+            if (HullTargeting.TryRaycast(
+                footOrigin,
+                -fUp,
+                maxRayDistance,
+                out var footHit,
+                ignoreTriggers: true))
+            {
+                var hitPart = footHit.collider.GetComponentInParent<Part>();
+                if (hitPart == _hullTarget.part)
+                {
+                    Vector3 targetPos = footHit.point + fUp * 0.02f;
 
-            Vector3 newPos = Vector3.Lerp(rb.position, rb.position + (targetPos - foot), 0.35f);
-            rb.MovePosition(newPos);
+                    Vector3 newPos = rb.position + (targetPos - Kerbal.footPivot.position) * 0.60f;
+                    rb.MovePosition(newPos);
+
+                    _hullTarget.hitPoint = footHit.point;
+                    _hullTarget.hitNormal = footHit.normal.normalized;
+                    _hullTarget.hitDistance = Vector3.Distance(Kerbal.footPivot.position, footHit.point);
+                }
+            }
         }
 
         // Stock-alike custom implementation replacing updateMovementOnVessel() which uses the scene-fixed coordinate frame
@@ -706,11 +702,6 @@ namespace G3MagnetBoots
             float num = (float)FSM.TimeAtCurrentState;
             num = ((num >= 0.3f) ? 1f : ((!(num > 0f)) ? 0f : (num * 3.3333333f)));
             currentSpd = Mathf.Lerp(lastTgtSpeed, tgtSpeed, num);
-
-            //Vector3 desiredDir = (tgtRpos != Vector3.zero)
-            //    ? (Kerbal.CharacterFrameMode ? tgtRpos : Kerbal.transform.forward)
-            //? (Vector3.Lerp(cmdDir, (Kerbal.CharacterFrameMode ? tgtRpos : Kerbal.transform.forward), num))
-            //     : Vector3.zero;
 
             Vector3 desiredDir = (tgtRpos != Vector3.zero) ? tgtRpos : Vector3.zero;
             desiredDir = Vector3.ProjectOnPlane(desiredDir, fUp);
@@ -767,7 +758,6 @@ namespace G3MagnetBoots
             }
         }
 
-        // onFallHeightFromTerrain is 0.3m by default in stock
         public virtual void UpdateAnchorHull()
         {
             if (Settings.modEnabled && Enabled && base.vessel.loaded && !base.vessel.packed && (FSM.CurrentState == st_idle_hull))
@@ -786,7 +776,6 @@ namespace G3MagnetBoots
                 }
                 else
                 {
-                    //KerbalEVAAccess.AddRBAnchor(Kerbal);
                     AddRBHullAnchor();
                 }
             }
@@ -807,7 +796,6 @@ namespace G3MagnetBoots
             KerbalEVAAccess.AnchorJoint(Kerbal).connectedBody = _hullTarget.part != null ? _hullTarget.part.rb : null; // attach to the hull part's rigidbody if available, otherwise null (world)
         }
 
-        /*
         private void UpdateHullInputTargets()
         {
             if (!_hullTarget.IsValid() || !VesselUnderControl) return;
@@ -815,70 +803,16 @@ namespace G3MagnetBoots
             GetCameraTangentBasis(fUp, out var camFwdT, out var camRightT);
             if (camFwdT == Vector3.zero || camRightT == Vector3.zero) return;
 
-            float v = 0f, h = 0f;
-            if (GameSettings.EVA_forward.GetKey()) v += 1f;
-            if (GameSettings.EVA_back.GetKey()) v -= 1f;
-            if (GameSettings.EVA_right.GetKey()) h += 1f;
-            if (GameSettings.EVA_left.GetKey()) h -= 1f;
+            Vector3 basisFwd = Vector3.ProjectOnPlane(Kerbal.transform.forward, fUp);
+            if (basisFwd.sqrMagnitude < 1e-6f)
+                basisFwd = Vector3.ProjectOnPlane(Kerbal.transform.right, fUp);
+            basisFwd.Normalize();
 
-            Vector3 move = camFwdT * v + camRightT * h;
-            if (move.sqrMagnitude > 1f) move.Normalize();
+            Vector3 basisRight = Vector3.ProjectOnPlane(Kerbal.transform.right, fUp);
+            if (basisRight.sqrMagnitude < 1e-6f)
+                basisRight = Vector3.Cross(fUp, basisFwd);
+            basisRight.Normalize();
 
-            tgtRpos = move;                         // used for movement + anim blend
-            tgtFwd = (move.sqrMagnitude > 1e-6f)   // used for facing when idle
-                ? move
-                : camFwdT;
-        }
-        */
-
-        private void UpdateHullInputTargets()
-        {
-            if (!_hullTarget.IsValid() || !VesselUnderControl) return;
-
-            GetCameraTangentBasis(fUp, out var camFwdT, out var camRightT);
-            if (camFwdT == Vector3.zero || camRightT == Vector3.zero) return;
-
-            // 1. Measure how "straight down" the camera is relative to the surface normal
-            Transform camT = null;
-            if (FlightCamera.fetch != null && FlightCamera.fetch.mainCamera != null)
-                camT = FlightCamera.fetch.mainCamera.transform;
-            else if (Camera.main != null)
-                camT = Camera.main.transform;
-
-            bool useKerbalFrame = false;
-            if (camT != null)
-            {
-                // +1: camera looking along +fUp, -1: along -fUp (straight into the surface)
-                float align = Vector3.Dot(camT.forward, fUp);
-
-                // Threshold: when looking too close to ±surface normal, stop using camera basis
-                // tweak 0.85f as needed (≈30° cone around the normal)
-                if (Mathf.Abs(align) > 0.85f)
-                    useKerbalFrame = true;
-            }
-
-            // 2. Choose movement basis: camera vs kerbal
-            Vector3 basisFwd, basisRight;
-
-            if (useKerbalFrame)
-            {
-                // Everything relative to kerbal forward/right projected on the surface,
-                // i.e. "normal" behavior you want in the straight-down case.
-                basisFwd = Vector3.ProjectOnPlane(Kerbal.transform.forward, fUp);
-                if (basisFwd.sqrMagnitude < 1e-6f)
-                    basisFwd = Vector3.ProjectOnPlane(Kerbal.transform.right, fUp);
-                basisFwd.Normalize();
-
-                basisRight = Vector3.ProjectOnPlane(Kerbal.transform.right, fUp);
-                if (basisRight.sqrMagnitude < 1e-6f)
-                    basisRight = Vector3.Cross(fUp, basisFwd);
-                basisRight.Normalize();
-            }
-            else
-            {
-                basisFwd = camFwdT;
-                basisRight = camRightT;
-            }
 
             float v = 0f, h = 0f;
             if (GameSettings.EVA_forward.GetKey()) v += 1f;
@@ -888,22 +822,15 @@ namespace G3MagnetBoots
 
             Vector3 move = basisFwd * v + basisRight * h;
             if (move.sqrMagnitude > 1f) move.Normalize();
-
-            // 3. Targets:
-            // - movement always uses the chosen basis
-            // - facing uses kerbal-forward frame when camera is too vertical
             tgtRpos = move;
 
-            if (move.sqrMagnitude > 1e-6f)
+            if (Mathf.Abs(v) > 0f || Mathf.Abs(h) > 0f)
             {
-                // Moving: face movement direction (already tangent to surface)
-                tgtFwd = move;
-            }
-            else
-            {
-                // Idle: either face camera-tangent forward or kerbal-forward-on-surface,
-                // depending on whether we're "too vertical" or not.
-                tgtFwd = useKerbalFrame ? basisFwd : camFwdT;
+                Vector3 heading = basisFwd + basisRight * h;  // ignores v sign
+                if (heading.sqrMagnitude < 1e-6f)
+                    heading = basisFwd;
+
+                tgtFwd = heading.normalized;
             }
         }
 
@@ -920,30 +847,44 @@ namespace G3MagnetBoots
 
             if (camT == null) return;
 
-            // Primary: camera forward projected onto surface plane
-            Vector3 f = Vector3.ProjectOnPlane(camT.forward, surfaceUp);
+            Vector3 upOnPlane = Vector3.ProjectOnPlane(camT.up, surfaceUp);
+            if (upOnPlane.sqrMagnitude < 1e-6f)
+            {
+                upOnPlane = Vector3.ProjectOnPlane(Vector3.up, surfaceUp);
+                if (upOnPlane.sqrMagnitude < 1e-6f)
+                    upOnPlane = Vector3.ProjectOnPlane(base.transform.up, surfaceUp);
+            }
+            upOnPlane.Normalize();
 
-            // If looking nearly straight up/down at the surface, forward projection collapses.
-            // Fallback: use camera UP projected onto the surface plane (screen-up becomes "forward").
-            if (f.sqrMagnitude < 1e-6f)
-                f = Vector3.ProjectOnPlane(camT.up, surfaceUp);
+            Vector3 right = Vector3.Cross(surfaceUp, upOnPlane);
+            if (right.sqrMagnitude < 1e-6f)
+                right = Vector3.Cross(surfaceUp, Vector3.forward);
+            right.Normalize();
 
-            // Last resort fallback
-            if (f.sqrMagnitude < 1e-6f)
-                f = Vector3.ProjectOnPlane(base.transform.forward, surfaceUp);
+            Vector3 fwd = Vector3.Cross(right, surfaceUp);
+            if (fwd.sqrMagnitude < 1e-6f)
+                fwd = Vector3.Cross(surfaceUp, right);
+            fwd.Normalize();
 
-            f.Normalize();
-
-            // Right: prefer camera right projected; fallback to cross
-            Vector3 r = Vector3.ProjectOnPlane(camT.right, surfaceUp);
-            if (r.sqrMagnitude < 1e-6f)
-                r = Vector3.Cross(surfaceUp, f);
-
-            r.Normalize();
-
-            tFwd = f;
-            tRight = r;
+            tFwd = fwd;
+            tRight = right;
         }
+
+        public bool IsOnHull => Enabled && _hullTarget.IsValid();
+        internal static bool ActiveEvaOnHull()
+        {
+            var v = FlightGlobals.ActiveVessel;
+            if (v == null || !v.isEVA) return false;
+
+            var part = v.rootPart;
+            if (part == null) return false;
+
+            var boots = part.FindModuleImplementing<G3MagnetBootsModule>();
+            if (boots == null) return false;
+
+            return boots.IsOnHull;
+        }
+
 
     }
 }
